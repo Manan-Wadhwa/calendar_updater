@@ -1,0 +1,15 @@
+# Core dependencies
+google-auth>=2.22.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0
+google-api-python-client>=2.86.0
+
+# NLP and text processing
+spacy>=3.7.2
+dateparser>=1.1.8
+
+# HTTP requests
+requests>=2.31.0
+
+# Development tools
+python-dotenv>=1.0.0  # For environment variables
