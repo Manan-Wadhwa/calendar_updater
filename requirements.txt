@@ -7,9 +7,13 @@ google-api-python-client>=2.86.0
 # NLP and text processing
 spacy>=3.7.2
 dateparser>=1.1.8
+python-dateutil>=2.8.2
 
 # HTTP requests
 requests>=2.31.0
+
+# GUI dependencies
+tkcalendar>=1.6.1
 
 # Development tools
 python-dotenv>=1.0.0  # For environment variables
