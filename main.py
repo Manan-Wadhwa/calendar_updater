@@ -2,11 +2,13 @@ import os
 import json
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from tkcalendar import DateEntry
 from calendar_utils import load_calendar_service, add_events_to_calendar, save_gemini_output, load_gemini_output
 from message_utils import extract_messages
 from gemini_utils import GeminiParser
 from event_utils import EventExtractor
 from typing import List, Dict
+import datetime
 
 class QuizExtractorApp(tk.Tk):
     def __init__(self):
@@ -47,20 +49,27 @@ class QuizExtractorApp(tk.Tk):
         ttk.Entry(frm, textvariable=self.creds_path, width=50).grid(row=3, column=1, sticky=tk.W)
         ttk.Button(frm, text="Browse...", command=self.browse_creds).grid(row=3, column=2)
         
-        # Add a checkbox for forcing event addition (i.e. ignoring duplicate checking)
+        # Force-add duplicates checkbox
         self.reset_duplicates = tk.BooleanVar(value=False)
         ttk.Checkbutton(frm, text="Force add events (ignore duplicates)", variable=self.reset_duplicates).grid(row=4, column=0, columnspan=3, sticky=tk.W)
         
+        # Cutoff Date widget to filter out messages before this date.
+        ttk.Label(frm, text="Cutoff Date for Messages:").grid(row=5, column=0, sticky=tk.W)
+        # Default to today's date
+        self.cutoff_date = tk.StringVar(value=datetime.date.today().isoformat())
+        self.date_entry = DateEntry(frm, textvariable=self.cutoff_date, date_pattern='yyyy-mm-dd')
+        self.date_entry.grid(row=5, column=1, sticky=tk.W)
+        
         # Parse & Add buttons (shifted down by one row)
-        ttk.Button(frm, text="Parse Events", command=self.parse_events).grid(row=5, column=1, pady=10)
-        ttk.Button(frm, text="Add All to Calendar", command=self.push_to_calendar).grid(row=5, column=2)
+        ttk.Button(frm, text="Parse Events", command=self.parse_events).grid(row=6, column=1, pady=10)
+        ttk.Button(frm, text="Add All to Calendar", command=self.push_to_calendar).grid(row=6, column=2)
 
         # Progress bar & status label
         self.progress = ttk.Progressbar(frm, length=300, mode='determinate')
-        self.progress.grid(row=6, column=0, columnspan=3, pady=10, sticky="ew")
+        self.progress.grid(row=7, column=0, columnspan=3, pady=10, sticky="ew")
         self.status_var = tk.StringVar()
         self.status_var.set("Ready")
-        ttk.Label(frm, textvariable=self.status_var).grid(row=7, column=0, columnspan=3, pady=5)
+        ttk.Label(frm, textvariable=self.status_var).grid(row=8, column=0, columnspan=3, pady=5)
 
         # Treeview to display events
         cols = ("Title", "Date", "Time", "Venue", "Link")
@@ -68,11 +77,11 @@ class QuizExtractorApp(tk.Tk):
         for c in cols:
             self.tree.heading(c, text=c)
             self.tree.column(c, width=120 if c != "Title" else 200)
-        self.tree.grid(row=8, column=0, columnspan=3, sticky="nsew")
+        self.tree.grid(row=9, column=0, columnspan=3, sticky="nsew")
 
         # JSON output frames
         json_frame = ttk.Frame(frm)
-        json_frame.grid(row=9, column=0, columnspan=3, sticky="nsew", pady=(10,0))
+        json_frame.grid(row=10, column=0, columnspan=3, sticky="nsew", pady=(10,0))
         
         # Local NLP JSON
         ttk.Label(json_frame, text="Local NLP JSON:").grid(row=0, column=0, sticky=tk.W)
@@ -84,7 +93,7 @@ class QuizExtractorApp(tk.Tk):
         self.gemini_json = tk.Text(json_frame, height=6, width=80)
         self.gemini_json.grid(row=3, column=0, sticky="nsew")
 
-        frm.rowconfigure(9, weight=1)
+        frm.rowconfigure(10, weight=1)
         frm.columnconfigure(1, weight=1)
         json_frame.columnconfigure(0, weight=1)
 
@@ -113,9 +122,16 @@ class QuizExtractorApp(tk.Tk):
             messagebox.showerror("Error", f"Failed to read chat file: {e}")
             return
 
+        # Use the GUI cutoff date to determine the last update date.
+        try:
+            cutoff = datetime.datetime.strptime(self.cutoff_date.get(), "%Y-%m-%d").date()
+        except Exception as e:
+            messagebox.showerror("Error", f"Invalid cutoff date: {e}")
+            return
+
         self.status_var.set("Extracting messages...")
         self.update_idletasks()
-        messages = extract_messages(text)
+        messages = extract_messages(text)    # Expected to return a list of (datetime, message_text)
         if not messages:
             messagebox.showwarning("Warning", 
                 "No recent messages found in the chat file.\n\n"
@@ -126,11 +142,13 @@ class QuizExtractorApp(tk.Tk):
                 "4. Incorrect file encoding (should be UTF-8)")
             return
             
-        self.status_var.set(f"Found {len(messages)} recent messages")
+        # Filter out messages before the chosen cutoff date.
+        filtered_messages = [(dt, msg) for dt, msg in messages if dt.date() >= cutoff]
+        self.status_var.set(f"Found {len(filtered_messages)} recent messages on/after {cutoff}")
         self.update_idletasks()
         
         self.progress['value'] = 0
-        self.progress['maximum'] = len(messages)
+        self.progress['maximum'] = len(filtered_messages)
         self.update_idletasks()
 
         local_events = []
@@ -145,8 +163,8 @@ class QuizExtractorApp(tk.Tk):
                 messagebox.showerror("Error", f"Failed to initialize Gemini: {e}")
                 return
         
-        for i, (dt, msg) in enumerate(messages):
-            self.status_var.set(f"Processing message {i+1}/{len(messages)}")
+        for i, (dt, msg) in enumerate(filtered_messages):
+            self.status_var.set(f"Processing message {i+1}/{len(filtered_messages)}")
             self.update_idletasks()
             local_quiz_events = self.event_extractor.extract_quiz_info(msg)
             local_events.extend(local_quiz_events)
@@ -224,7 +242,7 @@ class QuizExtractorApp(tk.Tk):
             service = load_calendar_service(creds)
             self.status_var.set("Adding events to calendar...")
             self.update_idletasks()
-            # Use the new calendar ID:
+            # Use the calendar ID you provided (update if needed)
             calendar_id = "9b7516b49f5e5ea66d05295f2830fa04ed95cb124d03f554beddaa3950e8f045@group.calendar.google.com"
             created = add_events_to_calendar(
                 valid_events,
