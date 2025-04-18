@@ -1,3 +1,6 @@
 __pycache__/
 *.py[cod]
 *.env
+whatsapp_chat.txt
+gemini_events.json
+example_message.txt

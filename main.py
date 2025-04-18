@@ -10,6 +10,10 @@ from event_utils import EventExtractor
 from typing import List, Dict
 import datetime
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 class QuizExtractorApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -242,8 +246,12 @@ class QuizExtractorApp(tk.Tk):
             service = load_calendar_service(creds)
             self.status_var.set("Adding events to calendar...")
             self.update_idletasks()
-            # Use the calendar ID you provided (update if needed)
-            calendar_id = "9b7516b49f5e5ea66d05295f2830fa04ed95cb124d03f554beddaa3950e8f045@group.calendar.google.com"
+
+            # Get calendar_id from environment variable
+            calendar_id = os.getenv("CALENDAR_ID")
+            if not calendar_id:
+                raise ValueError("CALENDAR_ID not set in the environment variables.")
+
             created = add_events_to_calendar(
                 valid_events,
                 service,
